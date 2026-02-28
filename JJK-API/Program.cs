@@ -1,5 +1,9 @@
+using System.Text;
 using JJK_API.Data;
+using JJK_API.Service;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +15,31 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>((options) => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+
+
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+      options.TokenValidationParameters = new TokenValidationParameters
+      {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidAudience = jwtSettings["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+              Encoding.UTF8.GetBytes(jwtSettings["Key"])
+          )
+      };
+    });
+
+builder.Services.AddAuthorization();
+
+builder.Services.AddScoped<TokenService>();
 
 builder.Services.AddCors(options =>
 {
@@ -36,6 +65,7 @@ if (app.Environment.IsDevelopment())
     c.RoutePrefix = "swagger"; // padrão
   });
 }
+
 
 app.UseCors("AllowAll");
 

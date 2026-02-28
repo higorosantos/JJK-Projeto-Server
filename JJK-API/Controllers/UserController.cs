@@ -1,6 +1,10 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using JJK_API.Data;
 using JJK_API.DTO.User;
 using JJK_API.Model;
+using JJK_API.Service;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +17,13 @@ namespace JJK_API.Controllers
 
     private AppDbContext _dbContext;
 
-    public UserController(AppDbContext appDbContext)
+
+    private readonly TokenService _tokenService;
+
+    public UserController(AppDbContext appDbContext, TokenService tokenService)
     {
       this._dbContext = appDbContext;
+      _tokenService = tokenService;
     }
 
     [HttpPost("auth")]
@@ -36,7 +44,9 @@ namespace JJK_API.Controllers
           return Unauthorized(new { message = "Senha incorreta" });
         }
 
-        UserAuthResponse response = new UserAuthResponse("32180I3U0218371280");
+        var token = this._tokenService.GenerateToken(user);
+
+        UserAuthResponse response = new UserAuthResponse(token, !string.IsNullOrEmpty(user.Nickname));
 
         return Ok(response);
 
@@ -46,6 +56,47 @@ namespace JJK_API.Controllers
         return BadRequest();
       }
      
+    }
+
+
+    //CRIAR UM ENUM DE STATUS DE ERRO
+    [Authorize]
+    [HttpPost("nickname")]
+    public async Task<IActionResult> NickName(ChangeNickRequestDTO userNickname)
+    {
+
+      try
+      {
+
+        User nickExist = await this._dbContext.Usuario.FirstOrDefaultAsync(user => user.Nickname == userNickname.NewNickName);
+
+        if (nickExist != null)
+        {
+          return BadRequest(new { message = "Apelido já cadastrado." });
+        }
+
+        var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        User user = await _dbContext.Usuario.FirstAsync(u => u.Id == userId);
+
+        if (user == null)
+        {
+          return NotFound(new { message = "Usuário não encontrado"});
+        }
+
+        user.Nickname = userNickname.NewNickName;
+
+        this._dbContext.Usuario.Update(user);
+        await this._dbContext.SaveChangesAsync();
+        return Ok();
+
+      }
+      catch (Exception e)
+      {
+        Console.WriteLine(e);
+        return BadRequest();
+      }
+
     }
 
     [HttpPost]
@@ -70,8 +121,9 @@ namespace JJK_API.Controllers
         this._dbContext.Usuario.Add(newUser);
         await this._dbContext.SaveChangesAsync();
 
+        var token = this._tokenService.GenerateToken(newUser);
 
-        UserAuthResponse response = new UserAuthResponse("230184192-0412-9321=");
+        UserAuthResponse response = new UserAuthResponse(token, false);
 
         return Ok(response);
 
